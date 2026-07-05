@@ -330,20 +330,26 @@ else:
 
         st.markdown("### 📈 Visualizing Static Checkpoint Assets")
 
+        MIGRATION_DIR = "./metrics_checkpoint_payload"
+
         col_curve, col_cm = st.columns(2)
         with col_curve:
-            img_c = os.path.join(MIGRATION_DIR, 'cross_pipeline_learning_comparison.png')
-            if os.path.exists(img_c):
-                st.image(img_c, caption="Cross-Pipeline Optimization & Convergence Curves",
-                         use_container_width=True)
+            img_c_path = os.path.join(MIGRATION_DIR, 'cross_pipeline_learning_comparison.png')
+            if os.path.exists(img_c_path):
+                # Read directly as a binary stream to ensure a flawless render
+                with open(img_c_path, "rb") as f:
+                    st.image(f.read(), caption="Cross-Pipeline Optimization & Convergence Curves",
+                             use_container_width=True)
             else:
                 st.info("Learning curves plot artifact missing from disk payload directory.")
 
         with col_cm:
-            img_m = os.path.join(MIGRATION_DIR, 'cross_pipeline_f1_comparison.png')
-            if os.path.exists(img_m):
-                st.image(img_m, caption="Per-Class F1-Score Delta Comparison Plot",
-                         use_container_width=True)
+            img_m_path = os.path.join(MIGRATION_DIR, 'cross_pipeline_f1_comparison.png')
+            if os.path.exists(img_m_path):
+                # Read directly as a binary stream to ensure a flawless render
+                with open(img_m_path, "rb") as f:
+                    st.image(f.read(), caption="Per-Class F1-Score Delta Comparison Plot",
+                             use_container_width=True)
             else:
                 st.info(
                     "F1 comparative grouped bar chart plot missing from disk payload directory.")
