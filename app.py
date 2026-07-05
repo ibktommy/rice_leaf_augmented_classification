@@ -131,49 +131,29 @@ import numpy as np
 
 
 def run_model_inference(model, image_pil):
-    """
-    Synchronized preprocessing pipeline matching the training dataset configuration.
-    Removes stuck predictions and unfreezes uniform 20% distributions.
-    """
-    # 1. Establish strict resolution targeting based on model architecture
     try:
         input_shape = model.input_shape
-        target_h = input_shape[1] if input_shape[1] is not None else 180
-        target_w = input_shape[2] if input_shape[2] is not None else 180
+        target_h, target_w = input_shape[1], input_shape[2]
     except Exception:
         target_h, target_w = 180, 180
 
-    # 2. Force conversion to RGB and resize using high-quality bilinear interpolation
     img_rgb = image_pil.convert("RGB")
     img_resized = img_rgb.resize((target_w, target_h))
-
-    # 3. Convert image to a float32 array
     img_array = np.array(img_resized, dtype=np.float32)
 
-    # 4. CRITICAL NORMALIZATION FIX
-    # EfficientNet architectures generally have an internal preprocessing layer
-    # that expects raw 0-255 inputs. If your training data wasn't pre-divided by 255 before
-    # being fed into the model, doing it here breaks the weights.
-    # Let's dynamically evaluate if the model scales internally or expects float boundaries:
-    if "efficientnet" in model.name.lower():
-        # Keep raw pixel scales [0, 255] if utilizing a raw Keras application backbone
-        pass
-    else:
-        # Standardize standard CNN baselines to normal [0, 1] bounds
-        if img_array.max() > 1.0:
-            img_array = img_array / 255.0
+    # --- DYNAMIC NORMALIZATION AUDIT ---
+    # If your models expect raw integer pixels [0-255], dividing by 255 kills accuracy.
+    # Let's keep it unscaled first to see if performance jumps.
+    # If your notebook explicitly had a 1./255 rescaling layer, uncomment the next 2 lines:
+    # if img_array.max() > 1.0:
+    #     img_array = img_array / 255.0
 
-    # 5. Add batch dimension (1, H, W, C)
     img_tensor = np.expand_dims(img_array, axis=0)
 
-    # 6. Execute forward pass prediction
     predictions = model.predict(img_tensor, verbose=0)[0]
-
-    # 7. Extract highest confidence index and label mapping
     best_idx = np.argmax(predictions)
-    confidence = predictions[best_idx]
 
-    return CATEGORIES[best_idx], confidence, predictions
+    return CATEGORIES[best_idx], predictions[best_idx], predictions
 
 
 # ==========================================
