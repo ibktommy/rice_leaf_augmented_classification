@@ -1,0 +1,49 @@
+# ==========================================
+# 🧠 Deep Learning Models & Large Datasets
+# ==========================================
+# Never let heavy binaries or datasets slip back into GitHub
+*.keras
+*.h5
+*.pkl
+*.npy
+*.npz
+*.zip
+*.tar.gz
+*.tgz
+extracted_test_pool/
+metrics_checkpoint_payload/pipeline_2_paths_manifest.json
+
+# ==========================================
+# 🐍 Python Environment & Caches
+# ==========================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments (Local deployment testing)
+.venv/
+venv/
+env/
+ENV/
+dist/
+build/
+*.egg-info/
+
+# ==========================================
+# 🖥️ IDE, Text Editors & OS Junk
+# ==========================================
+# Visual Studio Code / PyCharm settings
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Operating System specific files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Log.txt
