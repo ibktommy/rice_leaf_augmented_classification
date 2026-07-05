@@ -126,43 +126,54 @@ test_pool = extract_and_parse_test_pool()
 import tensorflow as tf
 import numpy as np
 
+import tensorflow as tf
+import numpy as np
+
 
 def run_model_inference(model, image_pil):
     """
-    Standardized inference preprocessing block ensuring strict channel synchronization.
+    Synchronized preprocessing pipeline matching the training dataset configuration.
+    Removes stuck predictions and unfreezes uniform 20% distributions.
     """
+    # 1. Establish strict resolution targeting based on model architecture
     try:
-        # 1. Dynamically target the model's exact expected layer dimensions
         input_shape = model.input_shape
         target_h = input_shape[1] if input_shape[1] is not None else 180
         target_w = input_shape[2] if input_shape[2] is not None else 180
     except Exception:
         target_h, target_w = 180, 180
 
-    # 2. Ensure image is strictly converted to RGB (stripping alpha channels if PNG)
+    # 2. Force conversion to RGB and resize using high-quality bilinear interpolation
     img_rgb = image_pil.convert("RGB")
-
-    # 3. Resize using high-quality bilinear interpolation
     img_resized = img_rgb.resize((target_w, target_h))
 
-    # 4. Convert to float32 matrix array
+    # 3. Convert image to a float32 array
     img_array = np.array(img_resized, dtype=np.float32)
 
-    # 5. Pipeline-Specific Normalization Check
-    # If your Pipeline 2 uses an EfficientNet backbone, it often expects raw 0-255 pixels
-    # because preprocessing is embedded in the network graph, OR it needs explicit scaling.
-    # Let's apply standard normalization, but watch out if your backbone handles it internally!
-    if img_array.max() > 1.0:
-        img_array = img_array / 255.0
+    # 4. CRITICAL NORMALIZATION FIX
+    # EfficientNet architectures generally have an internal preprocessing layer
+    # that expects raw 0-255 inputs. If your training data wasn't pre-divided by 255 before
+    # being fed into the model, doing it here breaks the weights.
+    # Let's dynamically evaluate if the model scales internally or expects float boundaries:
+    if "efficientnet" in model.name.lower():
+        # Keep raw pixel scales [0, 255] if utilizing a raw Keras application backbone
+        pass
+    else:
+        # Standardize standard CNN baselines to normal [0, 1] bounds
+        if img_array.max() > 1.0:
+            img_array = img_array / 255.0
 
-    # 6. Expand dimensions to create the batch tensor (1, H, W, 3)
+    # 5. Add batch dimension (1, H, W, C)
     img_tensor = np.expand_dims(img_array, axis=0)
 
-    # 7. Execute prediction pass
+    # 6. Execute forward pass prediction
     predictions = model.predict(img_tensor, verbose=0)[0]
-    best_idx = np.argmax(predictions)
 
-    return CATEGORIES[best_idx], predictions[best_idx], predictions
+    # 7. Extract highest confidence index and label mapping
+    best_idx = np.argmax(predictions)
+    confidence = predictions[best_idx]
+
+    return CATEGORIES[best_idx], confidence, predictions
 
 
 # ==========================================
