@@ -62,7 +62,9 @@ ZIP_URL = "https://huggingface.co/atomdev-ibktommy/rice-leaf-pathology-models/re
 P1_LOCAL_PATH = "pipeline_1_baseline.keras"
 P2_LOCAL_PATH = "pipeline_2_hybrid.keras"
 ZIP_LOCAL_PATH = "streamlit_test_samples.zip"
-EXTRACTED_DIR = "./streamlit_test_samples"  # Extracted to match your folder preference
+
+# CRITICAL FIX: The folders unpack directly into the workspace root folder
+EXTRACTED_DIR = "."
 MANIFEST_LOCAL_PATH = "test_samples_manifest.json"
 
 
@@ -88,27 +90,17 @@ def load_diagnostic_models():
 
 @st.cache_data
 def extract_and_parse_test_pool():
-    st.sidebar.error(f"📁 Server Folders: {os.listdir('.')}")
     """Download, extract, and recursively map test images with path alignment."""
     # Step 1: Download and unpack the zip archive if it's missing locally
-    if not os.path.exists(EXTRACTED_DIR):
+    # We check for one of your known folders to see if extraction is already complete
+    if not os.path.exists("Brown Spot"):
         if not os.path.exists(ZIP_LOCAL_PATH):
             with st.spinner("Streaming preset validation testing pool from remote archive..."):
                 urllib.request.urlretrieve(ZIP_URL, ZIP_LOCAL_PATH)
 
         with st.spinner("Unpacking research specimens for interactive matrix evaluation..."):
             with zipfile.ZipFile(ZIP_LOCAL_PATH, 'r') as zip_ref:
-                zip_ref.extractall(".")
-
-            # --- NESTED ZIP SAFETY OVERLAY ---
-            # If the zip extracted as a nested folder (streamlit_test_samples/streamlit_test_samples)
-            nested_check = os.path.join(EXTRACTED_DIR, "streamlit_test_samples")
-            if os.path.exists(nested_check):
-                import shutil
-                # Move contents out of the nested folder to the root extracted directory
-                for item in os.listdir(nested_check):
-                    shutil.move(os.path.join(nested_check, item), os.path.join(EXTRACTED_DIR, item))
-                shutil.rmtree(nested_check)
+                zip_ref.extractall(EXTRACTED_DIR)
 
             try:
                 os.remove(ZIP_LOCAL_PATH)
@@ -125,57 +117,39 @@ def extract_and_parse_test_pool():
             entries = manifest_data if isinstance(manifest_data, list) else manifest_data.values()
 
             for item in entries:
-                raw_path = item.get("app_relative_path")
-                if not raw_path:
-                    continue
+                filename_only = item.get("filename")
+                category_folder = item.get("true_category")
 
-                # Strip out formatting symbols to construct a clean target disk path
-                clean_rel_path = raw_path.replace("./streamlit_test_samples/", "").replace(
-                    "streamlit_test_samples/", "")
-                full_disk_path = os.path.join(EXTRACTED_DIR, clean_rel_path)
+                # Maps cleanly to: ./[Category Folder]/[Filename]
+                full_disk_path = os.path.join(EXTRACTED_DIR, category_folder, filename_only)
 
-                # Direct match verification
                 if os.path.exists(full_disk_path):
                     indexed_samples.append({
                         "path": full_disk_path,
-                        "name": item.get("filename"),
-                        "true_label": item.get("true_category")
+                        "name": filename_only,
+                        "true_label": category_folder
                     })
-                else:
-                    # Adaptive Fallback: Search folder directly if structure differs
-                    filename_only = item.get("filename")
-                    category_folder = item.get("true_category")
-                    alt_path = os.path.join(EXTRACTED_DIR, category_folder, filename_only)
-                    if os.path.exists(alt_path):
-                        indexed_samples.append({
-                            "path": alt_path,
-                            "name": filename_only,
-                            "true_label": category_folder
-                        })
 
         except Exception as e:
             st.warning(f"⚠️ Manifest parsing skipped due to schema mismatch: {e}")
 
     # Fallback to direct structural walking if manifest matching fails entirely
-    if not indexed_samples and os.path.exists(EXTRACTED_DIR):
-        for root, dirs, files in os.walk(EXTRACTED_DIR):
-            for file in files:
-                if file.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    full_path = os.path.join(root, file)
-                    parent_folder = os.path.basename(root)
-                    matched_lbl = "Unverified"
-                    for cat in CATEGORIES:
-                        if cat.lower() in parent_folder.lower() or cat.lower() in file.lower():
-                            matched_lbl = cat
-                            break
-                    indexed_samples.append({
-                        "path": full_path, "name": file, "true_label": matched_lbl
-                    })
+    if not indexed_samples:
+        for cat in CATEGORIES:
+            cat_dir = os.path.join(EXTRACTED_DIR, cat)
+            if os.path.exists(cat_dir):
+                for file in os.listdir(cat_dir):
+                    if file.lower().endswith(('.png', '.jpg', '.jpeg')):
+                        indexed_samples.append({
+                            "path": os.path.join(cat_dir, file),
+                            "name": file,
+                            "true_label": cat
+                        })
 
     return indexed_samples
 
 
-# Initialize networks
+# Initialize networks and assets
 model_p1, model_p2 = load_diagnostic_models()
 test_pool = extract_and_parse_test_pool()
 
@@ -265,7 +239,8 @@ if app_mode == "📊 Comparative Evaluation Lab":
         col_img, col_metrics = st.columns([1, 2])
 
         with col_img:
-            st.image(active_image, caption="Active Diagnostic Specimen", use_column_width=True)
+            # FIX: Updated deprecated use_column_width to width="always" to resolve logs alert warnings
+            st.image(active_image, caption="Active Diagnostic Specimen", use_container_width=True)
             if expected_ground_truth:
                 st.info(f"📋 Verified Ground Truth Label: **{expected_ground_truth}**")
             else:
@@ -390,8 +365,9 @@ else:
             img_c_path = os.path.join(MIGRATION_DIR, 'pipeline2_learning_curves.png')
             if os.path.exists(img_c_path):
                 with open(img_c_path, "rb") as f:
+                    # FIX: Updated deprecated use_column_width to use_container_width
                     st.image(f.read(), caption="Pipeline 2 Loss & Accuracy Optimization Paths",
-                             use_column_width=True)
+                             use_container_width=True)
             else:
                 st.info("Learning curves plot artifact missing from disk payload directory.")
 
@@ -399,8 +375,9 @@ else:
             img_m_path = os.path.join(MIGRATION_DIR, 'pipeline_cross_comparison_f1.png')
             if os.path.exists(img_m_path):
                 with open(img_m_path, "rb") as f:
+                    # FIX: Updated deprecated use_column_width to use_container_width
                     st.image(f.read(), caption="Per-Class Cross-Pipeline F1 Evolution Bar Chart",
-                             use_column_width=True)
+                             use_container_width=True)
             else:
                 st.info(
                     "F1 comparative grouped bar chart plot missing from disk payload directory.")
