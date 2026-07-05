@@ -123,17 +123,45 @@ test_pool = extract_and_parse_test_pool()
 # ==========================================
 # 📊 PREDICTION ENGINE HANDLER
 # ==========================================
+import tensorflow as tf
+import numpy as np
+
+
 def run_model_inference(model, image_pil):
-    """Preprocess target matrix frames matching backbone inputs exactly."""
-    img_resized = image_pil.resize((180, 180))
+    """
+    Standardized inference preprocessing block ensuring strict channel synchronization.
+    """
+    try:
+        # 1. Dynamically target the model's exact expected layer dimensions
+        input_shape = model.input_shape
+        target_h = input_shape[1] if input_shape[1] is not None else 180
+        target_w = input_shape[2] if input_shape[2] is not None else 180
+    except Exception:
+        target_h, target_w = 180, 180
+
+    # 2. Ensure image is strictly converted to RGB (stripping alpha channels if PNG)
+    img_rgb = image_pil.convert("RGB")
+
+    # 3. Resize using high-quality bilinear interpolation
+    img_resized = img_rgb.resize((target_w, target_h))
+
+    # 4. Convert to float32 matrix array
     img_array = np.array(img_resized, dtype=np.float32)
-    # Ensure raw values scale within normal bounding targets
+
+    # 5. Pipeline-Specific Normalization Check
+    # If your Pipeline 2 uses an EfficientNet backbone, it often expects raw 0-255 pixels
+    # because preprocessing is embedded in the network graph, OR it needs explicit scaling.
+    # Let's apply standard normalization, but watch out if your backbone handles it internally!
     if img_array.max() > 1.0:
-        img_array /= 255.0
+        img_array = img_array / 255.0
+
+    # 6. Expand dimensions to create the batch tensor (1, H, W, 3)
     img_tensor = np.expand_dims(img_array, axis=0)
 
+    # 7. Execute prediction pass
     predictions = model.predict(img_tensor, verbose=0)[0]
     best_idx = np.argmax(predictions)
+
     return CATEGORIES[best_idx], predictions[best_idx], predictions
 
 
