@@ -88,6 +88,7 @@ def load_diagnostic_models():
 
 @st.cache_data
 def extract_and_parse_test_pool():
+    st.sidebar.error(f"📁 Server Folders: {os.listdir('.')}")
     """Download, extract, and recursively map test images with path alignment."""
     # Step 1: Download and unpack the zip archive if it's missing locally
     if not os.path.exists(EXTRACTED_DIR):
