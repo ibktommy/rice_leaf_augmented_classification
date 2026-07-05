@@ -204,7 +204,7 @@ if app_mode == "📊 Comparative Evaluation Lab":
         col_img, col_metrics = st.columns([1, 2])
 
         with col_img:
-            st.image(active_image, caption="Active Diagnostic Specimen", use_container_width=True)
+            st.image(active_image, caption="Active Diagnostic Specimen", use_column_width=True)
             if expected_ground_truth:
                 st.info(f"📋 Verified Ground Truth Label: **{expected_ground_truth}**")
             else:
@@ -339,7 +339,7 @@ else:
                 # Read directly as a binary stream to ensure a flawless render
                 with open(img_c_path, "rb") as f:
                     st.image(f.read(), caption="Cross-Pipeline Optimization & Convergence Curves",
-                             use_container_width=True)
+                             use_column_width=True)
             else:
                 st.info("Learning curves plot artifact missing from disk payload directory.")
 
@@ -349,7 +349,7 @@ else:
                 # Read directly as a binary stream to ensure a flawless render
                 with open(img_m_path, "rb") as f:
                     st.image(f.read(), caption="Per-Class F1-Score Delta Comparison Plot",
-                             use_container_width=True)
+                             use_column_width=True)
             else:
                 st.info(
                     "F1 comparative grouped bar chart plot missing from disk payload directory.")
