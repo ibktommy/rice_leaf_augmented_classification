@@ -1,0 +1,28 @@
+{
+    "categories": [
+        "Bacterial Leaf Blight",
+        "Brown Spot",
+        "Healthy Rice Leaf",
+        "Leaf Blast",
+        "Leaf scald",
+        "Sheath Blight"
+    ],
+    "pipeline_1_f1": [
+        0.79,
+        0.82,
+        0.93,
+        0.7,
+        0.78,
+        0.9
+    ],
+    "pipeline_1_accuracy": 0.82,
+    "pipeline_2_f1": [
+        0.85,
+        0.88,
+        0.95,
+        0.74,
+        0.83,
+        0.91
+    ],
+    "pipeline_2_accuracy": 0.86
+}

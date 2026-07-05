@@ -16,7 +16,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom injection for agricultural domain themes (Forest Greens, Natural Earth Tones)
+# Custom injection for agricultural domain themes
 st.markdown("""
     <style>
     .main { background-color: #f7f9f6; }
@@ -48,22 +48,23 @@ CATEGORIES = [
     "Leaf Blast", "Leaf scald", "Sheath Blight"
 ]
 
+MIGRATION_DIR = "./metrics_checkpoint_payload"
 
 # ==========================================
 # 📂 CACHED SYSTEM LOADING UTILITIES
 # ==========================================
 
-# Define the absolute direct Hugging Face download paths
-# FIXME: Replace these placeholders with your actual copied Hugging Face direct links!
-P1_URL = "https://huggingface.co/atomdev-ibktommy/rice-leaf-pathology-models/resolve/main/pipeline_1.keras"
+# Direct Hugging Face download paths mapped to your exact filenames
+P1_URL = "https://huggingface.co/atomdev-ibktommy/rice-leaf-pathology-models/resolve/main/pipeline_1_baseline.keras"
 P2_URL = "https://huggingface.co/atomdev-ibktommy/rice-leaf-pathology-models/resolve/main/pipeline_2_hybrid.keras"
-ZIP_URL = ("https://huggingface.co/atomdev-ibktommy/rice-leaf-pathology-models/resolve/main/streamlit_test_samples.zip")
+ZIP_URL = "https://huggingface.co/atomdev-ibktommy/rice-leaf-pathology-models/resolve/main/streamlit_test_samples.zip"
 
-
-P1_LOCAL_PATH = "pipeline_1.keras"
+P1_LOCAL_PATH = "pipeline_1_baseline.keras"
 P2_LOCAL_PATH = "pipeline_2_hybrid.keras"
 ZIP_LOCAL_PATH = "streamlit_test_samples.zip"
-EXTRACTED_DIR = "./extracted_test_pool"
+EXTRACTED_DIR = "./streamlit_test_samples"  # Extracted to match your folder preference
+MANIFEST_LOCAL_PATH = "test_samples_manifest.json"
+
 
 @st.cache_resource
 def load_diagnostic_models():
@@ -87,31 +88,53 @@ def load_diagnostic_models():
 
 @st.cache_data
 def extract_and_parse_test_pool():
-    """Download and extract preset test image payload dynamically from Hugging Face."""
-    # Step 1: Download the archive if it's missing locally
+    """Download and extract test images using our deterministic manifest lookup schema."""
+    # Step 1: Download and unpack the zip archive if it's missing locally
     if not os.path.exists(EXTRACTED_DIR):
         if not os.path.exists(ZIP_LOCAL_PATH):
             with st.spinner("Streaming preset validation testing pool from remote archive..."):
                 urllib.request.urlretrieve(ZIP_URL, ZIP_LOCAL_PATH)
 
-        # Step 2: Extract the folder structures directly onto the server container disk
         with st.spinner("Unpacking research specimens for interactive matrix evaluation..."):
             with zipfile.ZipFile(ZIP_LOCAL_PATH, 'r') as zip_ref:
-                zip_ref.extractall(EXTRACTED_DIR)
-            # Remove the raw zip to free container RAM/disk space instantly
-            os.remove(ZIP_LOCAL_PATH)
+                zip_ref.extractall(".")  # Extracts directly as 'streamlit_test_samples' folder
+            try:
+                os.remove(ZIP_LOCAL_PATH)
+            except Exception:
+                pass
 
-    # Index path names cleanly mapping them to categories
+    # Step 2: Correlate directories directly using the local tracking manifest
     indexed_samples = []
-    if os.path.exists(EXTRACTED_DIR):
+    if os.path.exists(MANIFEST_LOCAL_PATH):
+        with open(MANIFEST_LOCAL_PATH, 'r') as f:
+            manifest_data = json.load(f)
+
+        for file_name, meta in manifest_data.items():
+            # Standardize root folder structures dynamically
+            clean_rel_path = meta["relative_path"].replace("./streamlit_test_samples/", "")
+            full_disk_path = os.path.join(EXTRACTED_DIR, clean_rel_path)
+
+            if os.path.exists(full_disk_path):
+                indexed_samples.append({
+                    "path": full_disk_path,
+                    "name": file_name,
+                    "true_label": meta["true_label"]
+                })
+
+    # Fallback to structural walking if manifest is unreadable
+    if not indexed_samples and os.path.exists(EXTRACTED_DIR):
         for root, dirs, files in os.walk(EXTRACTED_DIR):
             for file in files:
                 if file.lower().endswith(('.png', '.jpg', '.jpeg')):
                     full_path = os.path.join(root, file)
-                    parent_folder = os.path.basename(root)
-                    true_label = parent_folder if parent_folder in CATEGORIES else "Unknown Target"
-                    indexed_samples.append(
-                        {"path": full_path, "name": file, "true_label": true_label})
+                    matched_lbl = "Unverified"
+                    for cat in CATEGORIES:
+                        if cat in root or cat in file:
+                            matched_lbl = cat
+                    indexed_samples.append({
+                        "path": full_path, "name": file, "true_label": matched_lbl
+                    })
+
     return indexed_samples
 
 
@@ -123,13 +146,6 @@ test_pool = extract_and_parse_test_pool()
 # ==========================================
 # 📊 PREDICTION ENGINE HANDLER
 # ==========================================
-import tensorflow as tf
-import numpy as np
-
-import tensorflow as tf
-import numpy as np
-
-
 def run_model_inference(model, image_pil):
     try:
         input_shape = model.input_shape
@@ -140,13 +156,6 @@ def run_model_inference(model, image_pil):
     img_rgb = image_pil.convert("RGB")
     img_resized = img_rgb.resize((target_w, target_h))
     img_array = np.array(img_resized, dtype=np.float32)
-
-    # --- DYNAMIC NORMALIZATION AUDIT ---
-    # If your models expect raw integer pixels [0-255], dividing by 255 kills accuracy.
-    # Let's keep it unscaled first to see if performance jumps.
-    # If your notebook explicitly had a 1./255 rescaling layer, uncomment the next 2 lines:
-    # if img_array.max() > 1.0:
-    #     img_array = img_array / 255.0
 
     img_tensor = np.expand_dims(img_array, axis=0)
 
@@ -170,9 +179,7 @@ app_mode = st.sidebar.radio(
     ["📊 Comparative Evaluation Lab", "🔬 Historical Performance Analytics"]
 )
 
-# Load macro historical records if available
-MIGRATION_DIR = "./metrics_checkpoint_payload"
-comp_data_path = os.path.join(MIGRATION_DIR, "cross_pipeline_comparison.json")
+comp_data_path = os.path.join(MIGRATION_DIR, "cross_pipeline_performance_manifest.json")
 has_history = os.path.exists(comp_data_path)
 
 # ------------------------------------------
@@ -181,10 +188,10 @@ has_history = os.path.exists(comp_data_path)
 if app_mode == "📊 Comparative Evaluation Lab":
     st.subheader("🌾 Dual-Model Inference Analysis Platform")
 
-    # Selection Toggle for input configuration
-    src_toggle = st.radio("Choose Input Feed Source:", ["🎯 Select Preset Research Test Pool",
-                                                        "📸 Upload New Field Inspection Photo"],
-                          horizontal=True)
+    src_toggle = st.radio("Choose Input Feed Source:", [
+        "🎯 Select Preset Research Test Pool",
+        "📸 Upload New Field Inspection Photo"
+    ], horizontal=True)
 
     active_image = None
     expected_ground_truth = None
@@ -192,7 +199,7 @@ if app_mode == "📊 Comparative Evaluation Lab":
     if src_toggle == "🎯 Select Preset Research Test Pool":
         if not test_pool:
             st.warning(
-                "⚠️ Zipped preset test pool package ('streamlit_test_samples.zip') not found in workspace directory. Defaulting to custom manual uploading mode.")
+                "⚠️ Local lookup assets initializing or missing. Re-verify payload configurations.")
         else:
             sample_options = [f"{i + 1}: {s['name']} [{s['true_label']}]" for i, s in
                               enumerate(test_pool)]
@@ -209,7 +216,6 @@ if app_mode == "📊 Comparative Evaluation Lab":
                                          type=["jpg", "jpeg", "png"])
         if uploaded_file:
             active_image = Image.open(uploaded_file).convert("RGB")
-            # Farmer feedback control interface block
             expected_ground_truth = st.selectbox(
                 "Specify True Ground-Truth Condition (If Known/Confirmed by Agrologist):",
                 ["Unverified / Not Labeled"] + CATEGORIES
@@ -217,7 +223,6 @@ if app_mode == "📊 Comparative Evaluation Lab":
             if expected_ground_truth == "Unverified / Not Labeled":
                 expected_ground_truth = None
 
-    # Trigger diagnostic calculations if source targets exist
     if active_image is not None:
         st.markdown("---")
         col_img, col_metrics = st.columns([1, 2])
@@ -235,18 +240,14 @@ if app_mode == "📊 Comparative Evaluation Lab":
             if model_p1 is None or model_p2 is None:
                 st.error("Model architectures are uninitialized. Check weight dependencies.")
             else:
-                # Execute inference steps
                 lbl_p1, conf_p1, all_p1 = run_model_inference(model_p1, active_image)
                 lbl_p2, conf_p2, all_p2 = run_model_inference(model_p2, active_image)
 
-                # Determine absolute target accuracy winners
                 p1_matches = (lbl_p1 == expected_ground_truth) if expected_ground_truth else False
                 p2_matches = (lbl_p2 == expected_ground_truth) if expected_ground_truth else False
 
-                # Render side by side metric display containers
                 c1, c2 = st.columns(2)
 
-                # Column A: Pipeline 1 Baseline
                 with c1:
                     is_winner = (conf_p1 > conf_p2) and (p1_matches or not expected_ground_truth)
                     div_class = "report-card model-winner" if is_winner else "report-card"
@@ -266,7 +267,6 @@ if app_mode == "📊 Comparative Evaluation Lab":
                         else:
                             st.error("❌ Prediction Mismatch")
 
-                # Column B: Pipeline 2 cGAN Augmented
                 with c2:
                     is_winner = (conf_p2 > conf_p1) and (p2_matches or not expected_ground_truth)
                     div_class = "report-card model-winner" if is_winner else "report-card"
@@ -286,9 +286,6 @@ if app_mode == "📊 Comparative Evaluation Lab":
                         else:
                             st.error("❌ Prediction Mismatch")
 
-                # ==========================================
-                # 🏆 ULTIMATE DECISION ASCERTAINMENT ENGINE
-                # ==========================================
                 st.markdown("### 🏛️ Ascertainment Evaluation Report")
 
                 if expected_ground_truth:
@@ -299,7 +296,7 @@ if app_mode == "📊 Comparative Evaluation Lab":
                             f"🤝 **Both models accurately matched the true label.** **{higher_model}** is selected as the optimal deployment choice due to a higher diagnostic confidence margin of **+{margin:.2f}%**.")
                     elif p2_matches:
                         st.success(
-                            "🚀 **Pipeline 2 (cGAN Hybrid Model) successfully hit the true diagnosis while the baseline failed.** The targeted synthetic balancing resolved the minority feature limits!")
+                            "🚀 **Pipeline 2 (cGAN Hybrid Model) successfully hit the true diagnosis while the baseline failed.** The targeted synthetic balancing resolved minority feature limits!")
                     elif p1_matches:
                         st.warning(
                             "⚠️ **Pipeline 1 (Traditional Baseline) successfully matched the true label while the hybrid model missed.** Review sample distribution properties.")
@@ -307,7 +304,6 @@ if app_mode == "📊 Comparative Evaluation Lab":
                         st.error(
                             "💥 **Neither network successfully identified this pathology specimen.** The sample features fall outside current model boundaries.")
                 else:
-                    # Unlabeled assessment matching
                     higher_model = "Pipeline 2 (cGAN Hybrid)" if conf_p2 > conf_p1 else "Pipeline 1 (Traditional)"
                     margin = abs(conf_p2 - conf_p1) * 100
                     st.info(
@@ -323,18 +319,21 @@ else:
 
     if not has_history:
         st.warning(
-            "⚠️ Cross-pipeline comparison logs dictionary missing from payload folder path. Generate comparison charts locally to preview history.")
+            "⚠️ Cross-pipeline comparison logs manifest missing from payload path directory.")
     else:
         with open(comp_data_path, 'r') as f:
             c_manifest = json.load(f)
 
-        # Global Accuracy Metrics Cards Display
+        p1_acc = c_manifest["pipeline_1_accuracy"]
+        p2_acc = c_manifest["pipeline_2_accuracy"]
+        lift = (p2_acc - p1_acc) * 100
+
         m1, m2 = st.columns(2)
         with m1:
             st.markdown(f"""
                 <div class="metric-box">
                     <h5>Pipeline 1 Test Accuracy</h5>
-                    <h2>{c_manifest['pipeline_1_baseline']['global_accuracy'] * 100:.2f}%</h2>
+                    <h2>{p1_acc * 100:.2f}%</h2>
                     <p style='color:#777;'>Traditional Uniform Augmentation</p>
                 </div>
             """, unsafe_allow_html=True)
@@ -342,32 +341,28 @@ else:
             st.markdown(f"""
                 <div class="metric-box" style='border-color:#81c784;'>
                     <h5>Pipeline 2 Test Accuracy</h5>
-                    <h2>{c_manifest['pipeline_2_hybrid']['global_accuracy'] * 100:.2f}%</h2>
-                    <p style='color:#2e7d32; font-weight:bold;'>Targeted cGAN Balanced (+4.93% Lift)</p>
+                    <h2>{p2_acc * 100:.2f}%</h2>
+                    <p style='color:#2e7d32; font-weight:bold;'>Targeted cGAN Balanced (+{lift:.2f}% Lift)</p>
                 </div>
             """, unsafe_allow_html=True)
 
         st.markdown("### 📈 Visualizing Static Checkpoint Assets")
 
-        MIGRATION_DIR = "./metrics_checkpoint_payload"
-
         col_curve, col_cm = st.columns(2)
         with col_curve:
-            img_c_path = os.path.join(MIGRATION_DIR, 'cross_pipeline_learning_comparison.png')
+            img_c_path = os.path.join(MIGRATION_DIR, 'pipeline2_learning_curves.png')
             if os.path.exists(img_c_path):
-                # Read directly as a binary stream to ensure a flawless render
                 with open(img_c_path, "rb") as f:
-                    st.image(f.read(), caption="Cross-Pipeline Optimization & Convergence Curves",
+                    st.image(f.read(), caption="Pipeline 2 Loss & Accuracy Optimization Paths",
                              use_column_width=True)
             else:
                 st.info("Learning curves plot artifact missing from disk payload directory.")
 
         with col_cm:
-            img_m_path = os.path.join(MIGRATION_DIR, 'cross_pipeline_f1_comparison.png')
+            img_m_path = os.path.join(MIGRATION_DIR, 'pipeline_cross_comparison_f1.png')
             if os.path.exists(img_m_path):
-                # Read directly as a binary stream to ensure a flawless render
                 with open(img_m_path, "rb") as f:
-                    st.image(f.read(), caption="Per-Class F1-Score Delta Comparison Plot",
+                    st.image(f.read(), caption="Per-Class Cross-Pipeline F1 Evolution Bar Chart",
                              use_column_width=True)
             else:
                 st.info(
