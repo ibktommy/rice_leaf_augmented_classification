@@ -110,13 +110,12 @@ def extract_and_parse_test_pool():
             with open(MANIFEST_LOCAL_PATH, 'r') as f:
                 manifest_data = json.load(f)
 
-            # --- SAFE PARSER BLOCK ---
+            # --- PERFECTLY MAPPED PARSER ---
             # Scenario A: If manifest_data is a dictionary (JSON object)
             if isinstance(manifest_data, dict):
                 for file_name, meta in manifest_data.items():
-                    # Fallback to alternative keys if "relative_path" or "true_label" is missing
-                    raw_path = meta.get("relative_path") or meta.get("image_path") or meta.get(
-                        "path") or meta.get("file_path")
+                    # Map straight to your exact manifest key: 'app_relative_path'
+                    raw_path = meta.get("app_relative_path") or meta.get("relative_path")
                     if not raw_path:
                         continue
                     clean_rel_path = raw_path.replace("./streamlit_test_samples/", "")
@@ -125,38 +124,29 @@ def extract_and_parse_test_pool():
                     if os.path.exists(full_disk_path):
                         indexed_samples.append({
                             "path": full_disk_path,
-                            "name": file_name,
-                            "true_label": meta.get("true_label") or meta.get(
-                                "label") or "Unknown"
+                            "name": meta.get("filename") or file_name,
+                            "true_label": meta.get("true_category") or "Unknown"
                         })
 
             # Scenario B: If manifest_data is a list (JSON array)
             elif isinstance(manifest_data, list):
                 for item in manifest_data:
-                    raw_path = item.get("relative_path") or item.get("image_path") or item.get(
-                        "path") or item.get("file_path")
+                    # Map straight to your exact manifest key: 'app_relative_path'
+                    raw_path = item.get("app_relative_path") or item.get("relative_path")
                     if not raw_path:
                         continue
                     clean_rel_path = raw_path.replace("./streamlit_test_samples/", "")
                     full_disk_path = os.path.join(EXTRACTED_DIR, clean_rel_path)
 
-                    file_name = item.get("name") or item.get("filename") or os.path.basename(
+                    file_name = item.get("filename") or item.get("name") or os.path.basename(
                         full_disk_path)
 
                     if os.path.exists(full_disk_path):
                         indexed_samples.append({
                             "path": full_disk_path,
                             "name": file_name,
-                            "true_label": item.get("true_label") or item.get(
-                                "label") or "Unknown"
+                            "true_label": item.get("true_category") or "Unknown"
                         })
-
-            # If manifest parsed but paths couldn't be matched on disk, help debug keys
-            if not indexed_samples and manifest_data:
-                sample_entry = manifest_data[0] if isinstance(manifest_data, list) else \
-                list(manifest_data.values())[0]
-                if isinstance(sample_entry, dict):
-                    st.sidebar.info(f"📋 Manifest Keys Found: {list(sample_entry.keys())}")
 
         except Exception as e:
             st.warning(f"⚠️ Manifest parsing skipped due to schema mismatch: {e}")
