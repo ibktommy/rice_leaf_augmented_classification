@@ -88,7 +88,7 @@ def load_diagnostic_models():
 
 @st.cache_data
 def extract_and_parse_test_pool():
-    """Download and extract test images using our deterministic manifest lookup schema."""
+    """Download, extract, and recursively map test images with path alignment."""
     # Step 1: Download and unpack the zip archive if it's missing locally
     if not os.path.exists(EXTRACTED_DIR):
         if not os.path.exists(ZIP_LOCAL_PATH):
@@ -97,7 +97,18 @@ def extract_and_parse_test_pool():
 
         with st.spinner("Unpacking research specimens for interactive matrix evaluation..."):
             with zipfile.ZipFile(ZIP_LOCAL_PATH, 'r') as zip_ref:
-                zip_ref.extractall(".")  # Extracts directly as 'streamlit_test_samples' folder
+                zip_ref.extractall(".")
+
+            # --- NESTED ZIP SAFETY OVERLAY ---
+            # If the zip extracted as a nested folder (streamlit_test_samples/streamlit_test_samples)
+            nested_check = os.path.join(EXTRACTED_DIR, "streamlit_test_samples")
+            if os.path.exists(nested_check):
+                import shutil
+                # Move contents out of the nested folder to the root extracted directory
+                for item in os.listdir(nested_check):
+                    shutil.move(os.path.join(nested_check, item), os.path.join(EXTRACTED_DIR, item))
+                shutil.rmtree(nested_check)
+
             try:
                 os.remove(ZIP_LOCAL_PATH)
             except Exception:
@@ -110,57 +121,52 @@ def extract_and_parse_test_pool():
             with open(MANIFEST_LOCAL_PATH, 'r') as f:
                 manifest_data = json.load(f)
 
-            # --- PERFECTLY MAPPED PARSER ---
-            # Scenario A: If manifest_data is a dictionary (JSON object)
-            if isinstance(manifest_data, dict):
-                for file_name, meta in manifest_data.items():
-                    # Map straight to your exact manifest key: 'app_relative_path'
-                    raw_path = meta.get("app_relative_path") or meta.get("relative_path")
-                    if not raw_path:
-                        continue
-                    clean_rel_path = raw_path.replace("./streamlit_test_samples/", "")
-                    full_disk_path = os.path.join(EXTRACTED_DIR, clean_rel_path)
+            entries = manifest_data if isinstance(manifest_data, list) else manifest_data.values()
 
-                    if os.path.exists(full_disk_path):
+            for item in entries:
+                raw_path = item.get("app_relative_path")
+                if not raw_path:
+                    continue
+
+                # Strip out formatting symbols to construct a clean target disk path
+                clean_rel_path = raw_path.replace("./streamlit_test_samples/", "").replace(
+                    "streamlit_test_samples/", "")
+                full_disk_path = os.path.join(EXTRACTED_DIR, clean_rel_path)
+
+                # Direct match verification
+                if os.path.exists(full_disk_path):
+                    indexed_samples.append({
+                        "path": full_disk_path,
+                        "name": item.get("filename"),
+                        "true_label": item.get("true_category")
+                    })
+                else:
+                    # Adaptive Fallback: Search folder directly if structure differs
+                    filename_only = item.get("filename")
+                    category_folder = item.get("true_category")
+                    alt_path = os.path.join(EXTRACTED_DIR, category_folder, filename_only)
+                    if os.path.exists(alt_path):
                         indexed_samples.append({
-                            "path": full_disk_path,
-                            "name": meta.get("filename") or file_name,
-                            "true_label": meta.get("true_category") or "Unknown"
-                        })
-
-            # Scenario B: If manifest_data is a list (JSON array)
-            elif isinstance(manifest_data, list):
-                for item in manifest_data:
-                    # Map straight to your exact manifest key: 'app_relative_path'
-                    raw_path = item.get("app_relative_path") or item.get("relative_path")
-                    if not raw_path:
-                        continue
-                    clean_rel_path = raw_path.replace("./streamlit_test_samples/", "")
-                    full_disk_path = os.path.join(EXTRACTED_DIR, clean_rel_path)
-
-                    file_name = item.get("filename") or item.get("name") or os.path.basename(
-                        full_disk_path)
-
-                    if os.path.exists(full_disk_path):
-                        indexed_samples.append({
-                            "path": full_disk_path,
-                            "name": file_name,
-                            "true_label": item.get("true_category") or "Unknown"
+                            "path": alt_path,
+                            "name": filename_only,
+                            "true_label": category_folder
                         })
 
         except Exception as e:
             st.warning(f"⚠️ Manifest parsing skipped due to schema mismatch: {e}")
 
-    # Fallback to structural walking if manifest is unreadable or empty
+    # Fallback to direct structural walking if manifest matching fails entirely
     if not indexed_samples and os.path.exists(EXTRACTED_DIR):
         for root, dirs, files in os.walk(EXTRACTED_DIR):
             for file in files:
                 if file.lower().endswith(('.png', '.jpg', '.jpeg')):
                     full_path = os.path.join(root, file)
+                    parent_folder = os.path.basename(root)
                     matched_lbl = "Unverified"
                     for cat in CATEGORIES:
-                        if cat in root or cat in file:
+                        if cat.lower() in parent_folder.lower() or cat.lower() in file.lower():
                             matched_lbl = cat
+                            break
                     indexed_samples.append({
                         "path": full_path, "name": file, "true_label": matched_lbl
                     })
