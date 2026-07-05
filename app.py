@@ -103,23 +103,43 @@ def extract_and_parse_test_pool():
             except Exception:
                 pass
 
-    # Step 2: Correlate directories directly using the local tracking manifest
-    indexed_samples = []
-    if os.path.exists(MANIFEST_LOCAL_PATH):
-        with open(MANIFEST_LOCAL_PATH, 'r') as f:
-            manifest_data = json.load(f)
+        # Step 2: Correlate directories directly using the local tracking manifest
+        indexed_samples = []
+        if os.path.exists(MANIFEST_LOCAL_PATH):
+            try:
+                with open(MANIFEST_LOCAL_PATH, 'r') as f:
+                    manifest_data = json.load(f)
 
-        for file_name, meta in manifest_data.items():
-            # Standardize root folder structures dynamically
-            clean_rel_path = meta["relative_path"].replace("./streamlit_test_samples/", "")
-            full_disk_path = os.path.join(EXTRACTED_DIR, clean_rel_path)
+                # --- SAFE PARSER BLOCK ---
+                # Scenario A: If manifest_data is a dictionary (JSON object)
+                if isinstance(manifest_data, dict):
+                    for file_name, meta in manifest_data.items():
+                        clean_rel_path = meta["relative_path"].replace("./streamlit_test_samples/",
+                                                                       "")
+                        full_disk_path = os.path.join(EXTRACTED_DIR, clean_rel_path)
+                        if os.path.exists(full_disk_path):
+                            indexed_samples.append({
+                                "path": full_disk_path,
+                                "name": file_name,
+                                "true_label": meta["true_label"]
+                            })
 
-            if os.path.exists(full_disk_path):
-                indexed_samples.append({
-                    "path": full_disk_path,
-                    "name": file_name,
-                    "true_label": meta["true_label"]
-                })
+                # Scenario B: If manifest_data is a list (JSON array)
+                elif isinstance(manifest_data, list):
+                    for item in manifest_data:
+                        # Fallback to handle dynamic dictionary configurations inside a list
+                        file_name = item.get("name") or item.get("filename") or "Unknown_Specimen"
+                        clean_rel_path = item["relative_path"].replace("./streamlit_test_samples/",
+                                                                       "")
+                        full_disk_path = os.path.join(EXTRACTED_DIR, clean_rel_path)
+                        if os.path.exists(full_disk_path):
+                            indexed_samples.append({
+                                "path": full_disk_path,
+                                "name": file_name,
+                                "true_label": item["true_label"]
+                            })
+            except Exception as e:
+                st.warning(f"⚠️ Manifest parsing skipped due to schema mismatch: {e}")
 
     # Fallback to structural walking if manifest is unreadable
     if not indexed_samples and os.path.exists(EXTRACTED_DIR):
